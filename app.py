@@ -31,40 +31,46 @@ def preprocess_pil_image(img):
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    try:
+        print("Received request for prediction", flush=True)
 
-    print("Received request for prediction")
-    
-    data = request.get_json(force=True)
-    
-    print(data)
-    
-    img_b64 = data.get("image", "")
+        data = request.get_json(silent=True)
+        print("JSON data:", data, flush=True)
 
-    if not img_b64.startswith("data:"):
-        return jsonify({"error": "Неверный формат изображения"}), 400
+        if not data or "image" not in data:
+            return jsonify({"error": "No image sent"}), 400
 
-    _, encoded = img_b64.split(",", 1)
-    image_bytes = base64.b64decode(encoded)
-    pil_img = Image.open(io.BytesIO(image_bytes))
+        img_b64 = data["image"]
 
-    x = preprocess_pil_image(pil_img)
+        if not img_b64.startswith("data:"):
+            return jsonify({"error": "Неверный формат изображения"}), 400
 
-    probs = model.predict(x)
-    probs = probs[0]
-    pred_idx = int(np.argmax(probs))
+        _, encoded = img_b64.split(",", 1)
+        image_bytes = base64.b64decode(encoded)
 
-    top3_idx = probs.argsort()[-3:][::-1]
-    top3 = [{"class": int(i), "prob": float(probs[i])} for i in top3_idx]
+        pil_img = Image.open(io.BytesIO(image_bytes))
+        x = preprocess_pil_image(pil_img)
 
-    response = {
-        "pred": pred_idx,
-        "probs": [float(p) for p in probs.tolist()],
-        "top3": top3
-    }
-    
-    print(f"{response}")
-    
-    return jsonify(response)
+        probs = model.predict(x)
+        probs = probs[0]
+        pred_idx = int(np.argmax(probs))
+
+        top3_idx = probs.argsort()[-3:][::-1]
+        top3 = [{"class": int(i), "prob": float(probs[i])} for i in top3_idx]
+
+        response = {
+            "pred": pred_idx,
+            "probs": [float(p) for p in probs.tolist()],
+            "top3": top3
+        }
+
+        print("Response:", response, flush=True)
+        return jsonify(response)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run()
