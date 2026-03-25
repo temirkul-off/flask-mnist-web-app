@@ -32,7 +32,12 @@ def preprocess_pil_image(img):
 @app.route("/predict", methods=["POST"])
 def predict():
 
+    print("Received request for prediction")
+    
     data = request.get_json(force=True)
+    
+    print(data)
+    
     img_b64 = data.get("image", "")
 
     if not img_b64.startswith("data:"):
@@ -56,6 +61,9 @@ def predict():
         "probs": [float(p) for p in probs.tolist()],
         "top3": top3
     }
+    
+    print(f"{response}")
+    
     return jsonify(response)
 
 if __name__ == "__main__":
