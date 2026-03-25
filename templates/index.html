@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Угадай цифру — мини-демо</title>
+    <style>
+        body {
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px;
+            background: #f6f8fb;
+            color: #222;
+        }
+
+        .card {
+            background: white;
+            padding: 18px;
+            border-radius: 12px;
+            box-shadow: 0 6px 24px rgba(20, 30, 60, 0.08);
+            width: 360px;
+        }
+
+        h1 {
+            margin: 0 0 8px 0;
+            font-size: 20px
+        }
+
+        p.lead {
+            margin: 0 0 16px 0;
+            color: #546170
+        }
+
+        canvas {
+            background: #10121a;
+            border-radius: 8px;
+            display: block;
+            margin: 8px auto;
+            touch-action: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        button {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600
+        }
+
+        .btn-clear {
+            background: #e7eefc
+        }
+
+        .btn-predict {
+            background: #2b6ef6;
+            color: white
+        }
+
+        .result {
+            margin-top: 12px;
+            font-size: 18px;
+            text-align: center;
+        }
+
+        .small {
+            font-size: 13px;
+            color: #5b646f;
+            margin-top: 6px
+        }
+
+        .top3 {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #333
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <h1>Нарисуй цифру — я попробую угадать</h1>
+        <p class="lead">Рисуй мышкой в рамке ниже. Нажми <b>Предсказать</b>, и мой внутренний ИИ скажет, что это.</p>
+
+        <canvas id="draw" width="280" height="280"></canvas>
+
+        <div class="controls">
+            <button class="btn-clear" id="clearBtn">Очистить</button>
+            <button class="btn-predict" id="predictBtn">Предсказать</button>
+        </div>
+        <div class="result" id="result">—</div>
+        <div class="top3" id="top3"></div>
+    </div>
+
+    <script>
+        (function () {
+            const canvas = document.getElementById("draw");
+            const ctx = canvas.getContext("2d");
+            const clearBtn = document.getElementById("clearBtn");
+            const predictBtn = document.getElementById("predictBtn");
+            const resultDiv = document.getElementById("result");
+            const top3Div = document.getElementById("top3");
+
+            // Настройка холста: тёмный фон и белая кисть
+            ctx.fillStyle = "#000";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.lineWidth = 18;
+            ctx.strokeStyle = "white";
+
+            // простая логика рисования (pointer events)
+            let drawing = false;
+            let lastX = 0, lastY = 0;
+
+            function ptrDown(e) {
+                drawing = true;
+                const r = canvas.getBoundingClientRect();
+                lastX = (e.clientX || e.touches[0].clientX) - r.left;
+                lastY = (e.clientY || e.touches[0].clientY) - r.top;
+            }
+            function ptrMove(e) {
+                if (!drawing) return;
+                e.preventDefault();
+                const r = canvas.getBoundingClientRect();
+                const x = (e.clientX || e.touches[0].clientX) - r.left;
+                const y = (e.clientY || e.touches[0].clientY) - r.top;
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+                lastX = x; lastY = y;
+            }
+            function ptrUp(e) { drawing = false; }
+
+            // события
+            canvas.addEventListener("pointerdown", (e) => { canvas.setPointerCapture(e.pointerId); ptrDown(e); });
+            canvas.addEventListener("pointermove", ptrMove);
+            canvas.addEventListener("pointerup", ptrUp);
+            canvas.addEventListener("pointercancel", ptrUp);
+            // Для мобильных браузеров, pointer events обычно покрывают touch/mouse.
+
+            clearBtn.addEventListener("click", () => {
+                ctx.fillStyle = "#10121a";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                resultDiv.textContent = "—";
+                top3Div.textContent = "";
+            });
+
+            predictBtn.addEventListener("click", async () => {
+                resultDiv.textContent = "Подождите... думает мой нейрончик 🧠";
+                top3Div.textContent = "";
+                // получить картинку в base64 (png)
+                const dataUrl = canvas.toDataURL("image/png");
+
+                try {
+                    const res = await fetch("/predict", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ image: dataUrl })
+                    });
+                    const j = await res.json();
+                    if (j.error) {
+                        resultDiv.textContent = "Ошибка: " + j.error;
+                        return;
+                    }
+                    const pred = j.pred;
+                    resultDiv.innerHTML = `<b>Я думаю, это: ${pred}</b> 🥳`;
+
+                    // топ-3
+                    const top = j.top3 || [];
+                    top3Div.innerHTML = "Топ-3: " + top.map(t => `${t.class} (${(t.prob * 100).toFixed(1)}%)`).join(", ");
+                } catch (err) {
+                    resultDiv.textContent = "Сетевая ошибка — не могу связаться с сервером.";
+                    console.error(err);
+                }
+            });
+
+        })();
+    </script>
+</body>
+
+</html>
