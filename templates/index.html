@@ -167,7 +167,15 @@
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ image: dataUrl })
                     });
-                    const j = await res.json();
+
+                    const text = await res.text();
+
+                    if (!res.ok) {
+                        resultDiv.textContent = `Server error ${res.status}: ${text}`;
+                        return;
+                    }
+
+                    const j = JSON.parse(text);
                     if (j.error) {
                         resultDiv.textContent = "Ошибка: " + j.error;
                         return;
