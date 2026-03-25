@@ -10,6 +10,7 @@ flatbuffers==25.12.19
 gast==0.7.0
 google-pasta==0.2.0
 grpcio==1.78.0
+gunicorn==25.2.0
 h5py==3.14.0
 idna==3.11
 itsdangerous==2.2.0
