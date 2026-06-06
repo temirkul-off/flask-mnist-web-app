@@ -82,6 +82,83 @@
             font-size: 14px;
             color: #333
         }
+
+        .btn-feedback {
+            background: #111827;
+            color: white;
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .btn-feedback:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 1000;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 14px;
+            padding: 20px;
+            width: 100%;
+            max-width: 420px;
+            position: relative;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-content h2 {
+            margin-top: 0;
+        }
+
+        .modal-content label {
+            display: block;
+            margin-top: 12px;
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+
+        .modal-content input[type="text"],
+        .modal-content input[type="email"],
+        .modal-content input[type="number"],
+        .modal-content textarea {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px;
+            border: 1px solid #cfd7e3;
+            border-radius: 8px;
+            font: inherit;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 18px;
+            margin-top: 6px;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            border: none;
+            background: transparent;
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+        }
     </style>
 </head>
 
@@ -98,6 +175,42 @@
         </div>
         <div class="result" id="result">—</div>
         <div class="top3" id="top3"></div>
+        <button class="btn-feedback" id="openFeedbackBtn" disabled>Оставить отзыв</button>
+    </div>
+
+    <div class="modal hidden" id="feedbackModal">
+        <div class="modal-content">
+            <button class="close-btn" id="closeFeedbackBtn" type="button">×</button>
+
+            <h2>Обратная связь</h2>
+
+            <form id="feedbackForm">
+                <label for="fbName">Name</label>
+                <input type="text" id="fbName" required>
+
+                <label for="fbEmail">Email</label>
+                <input type="email" id="fbEmail" required>
+
+                <label>Был ли ответ нейросети правильным?</label>
+                <div class="radio-group">
+                    <label><input type="radio" name="isCorrect" value="yes" required> Да</label>
+                    <label><input type="radio" name="isCorrect" value="no"> Нет</label>
+                </div>
+
+                <div id="correctAnswerWrap" style="display:none;">
+                    <label for="fbCorrectAnswer">Какой ответ был правильным?</label>
+                    <input type="number" id="fbCorrectAnswer" min="0" max="9">
+                </div>
+
+                <label for="fbComment">Комментарий (необязательно)</label>
+                <textarea id="fbComment" rows="4"></textarea>
+
+                <div class="controls" style="margin-top: 16px;">
+                    <button type="submit" class="btn-predict">Отправить</button>
+                    <button type="button" class="btn-clear" id="cancelFeedbackBtn">Отмена</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script>
@@ -108,6 +221,9 @@
             const predictBtn = document.getElementById("predictBtn");
             const resultDiv = document.getElementById("result");
             const top3Div = document.getElementById("top3");
+
+            let lastImageDataUrl = null;
+            let lastPrediction = null;
 
             // Настройка холста: тёмный фон и белая кисть
             ctx.fillStyle = "#000";
@@ -186,9 +302,98 @@
                     // топ-3
                     const top = j.top3 || [];
                     top3Div.innerHTML = "Топ-3: " + top.map(t => `${t.class} (${(t.prob * 100).toFixed(1)}%)`).join(", ");
+
+                    lastImageDataUrl = dataUrl;
+                    lastPrediction = j;
+                    document.getElementById("openFeedbackBtn").disabled = false;
+
                 } catch (err) {
                     resultDiv.textContent = "Сетевая ошибка — не могу связаться с сервером.";
                     console.error(err);
+                }
+            });
+
+            const openFeedbackBtn = document.getElementById("openFeedbackBtn");
+            const feedbackModal = document.getElementById("feedbackModal");
+            const closeFeedbackBtn = document.getElementById("closeFeedbackBtn");
+            const cancelFeedbackBtn = document.getElementById("cancelFeedbackBtn");
+            const feedbackForm = document.getElementById("feedbackForm");
+            const correctAnswerWrap = document.getElementById("correctAnswerWrap");
+            const fbCorrectAnswer = document.getElementById("fbCorrectAnswer");
+
+            openFeedbackBtn.addEventListener("click", () => {
+                if (!lastPrediction) return;
+                feedbackForm.reset();
+                correctAnswerWrap.style.display = "none";
+                fbCorrectAnswer.required = false;
+                feedbackModal.classList.remove("hidden");
+            });
+
+            closeFeedbackBtn.addEventListener("click", () => {
+                feedbackModal.classList.add("hidden");
+            });
+
+            cancelFeedbackBtn.addEventListener("click", () => {
+                feedbackModal.classList.add("hidden");
+            });
+
+            document.querySelectorAll('input[name="isCorrect"]').forEach((el) => {
+                el.addEventListener("change", () => {
+                    const selected = document.querySelector('input[name="isCorrect"]:checked');
+                    const isNo = selected && selected.value === "no";
+
+                    correctAnswerWrap.style.display = isNo ? "block" : "none";
+                    fbCorrectAnswer.required = isNo;
+                });
+            });
+
+            feedbackForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+
+                const selected = document.querySelector('input[name="isCorrect"]:checked');
+                if (!selected) {
+                    alert("Please select Yes or No.");
+                    return;
+                }
+
+                const isCorrect = selected.value === "yes";
+
+                const payload = {
+                    name: document.getElementById("fbName").value.trim(),
+                    email: document.getElementById("fbEmail").value.trim(),
+                    is_correct: isCorrect,
+                    correct_answer: isCorrect ? null : document.getElementById("fbCorrectAnswer").value.trim(),
+                    comment: document.getElementById("fbComment").value.trim(),
+                    image_data_url: lastImageDataUrl,
+                    pred: lastPrediction.pred,
+                    probs: lastPrediction.probs,
+                    top3: lastPrediction.top3
+                };
+
+                try {
+                    const res = await fetch("/feedback", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const text = await res.text();
+
+                    if (!res.ok) {
+                        console.log("Ошибка сервера: " + text);
+                        return;
+                    }
+
+                    const j = JSON.parse(text);
+                    if (j.ok) {
+                        alert("Спасибо! Отзыв сохранён.");
+                        feedbackModal.classList.add("hidden");
+                    } else {
+                        console.log("Ошибка: " + (j.error || "unknown"));
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert("Не удалось отправить отзыв.");
                 }
             });
 
